@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>강서 ROAD TEST v2</title>
+<title>강서 ROAD TEST v3</title>
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
 #wrap{position:fixed;inset:0;background:#111} canvas{display:block;width:100%;height:100%}
@@ -12,7 +12,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:syste
 #status{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.4);backdrop-filter:blur(6px);padding:8px 12px;border-radius:999px;font-size:13px}
 #nav{position:absolute;top:86px;left:50%;transform:translateX(-50%);width:min(82vw,430px);background:rgba(9,17,26,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:11px 14px;box-sizing:border-box}
 #nav strong{display:block;font-size:15px;margin-bottom:3px} #nav span{font-size:12px;color:#d7e4ef}
-.controls{position:fixed;inset:0;pointer-events:none}.pad{position:absolute;bottom:18px;display:flex;gap:10px;pointer-events:auto}#leftPad{left:16px}#rightPad{right:16px;flex-direction:column-reverse}
+.controls{position:fixed;inset:0;pointer-events:none}.pad{position:absolute;bottom:18px;display:flex;gap:10px;pointer-events:auto}#rightPad{right:16px;flex-direction:column-reverse}
+#wheelWrap{position:fixed;left:18px;bottom:16px;width:154px;height:154px;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none}#wheel{width:100%;height:100%;border-radius:50%;border:12px solid rgba(238,242,246,.86);box-sizing:border-box;background:rgba(15,22,29,.32);box-shadow:inset 0 0 0 3px rgba(0,0,0,.32),0 5px 18px rgba(0,0,0,.28);position:relative;transform:rotate(0deg)}#wheel:before,#wheel:after{content:'';position:absolute;left:50%;top:50%;width:58px;height:10px;background:rgba(238,242,246,.86);border-radius:6px;transform-origin:0 50%}#wheel:before{transform:rotate(25deg)}#wheel:after{transform:rotate(155deg)}#wheelHub{position:absolute;left:50%;top:50%;width:42px;height:42px;transform:translate(-50%,-50%);border-radius:50%;background:#202a32;border:5px solid rgba(238,242,246,.9);box-sizing:border-box}#wheelMark{position:absolute;left:50%;top:3px;width:6px;height:24px;transform:translateX(-50%);border-radius:4px;background:#fff}
 .btn{width:78px;height:78px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:white;font-size:30px;font-weight:800;backdrop-filter:blur(8px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);user-select:none;-webkit-user-select:none}.btn:active,.btn.active{background:rgba(255,255,255,.34);transform:scale(.98)}
 #gas,#brake{width:94px;height:62px;font-size:17px;border-radius:18px}#gas{background:rgba(255,255,255,.20)}#brake{background:rgba(255,255,255,.13)}
 #signalPad{position:fixed;left:50%;bottom:98px;transform:translateX(-50%);display:flex;gap:8px;pointer-events:auto}.sig{width:64px;height:42px;border:0;border-radius:14px;background:rgba(0,0,0,.34);color:#fff;font-size:18px;font-weight:900}.sig.active{background:rgba(255,185,45,.78);color:#111}
@@ -24,24 +25,32 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:syste
 </head>
 <body>
 <div id="wrap"><canvas id="game"></canvas></div>
-<div id="hud"><div id="topbar"><span>A COURSE · v2</span><span id="score">100점</span></div><div id="status">0 km/h</div><div id="nav"><strong id="navTitle">출발 후 직진하세요</strong><span id="navSub">첫 분기점에서 우회전 · 방향지시등 사용</span></div></div>
-<div class="controls"><div id="leftPad" class="pad"><button class="btn" data-key="left">◀</button><button class="btn" data-key="right">▶</button></div><div id="rightPad" class="pad"><button class="btn" id="gas" data-key="gas">ACCEL</button><button class="btn" id="brake" data-key="brake">BRAKE</button></div></div>
+<div id="hud"><div id="topbar"><span>A COURSE · v3</span><span id="score">100점</span></div><div id="status">0 km/h</div><div id="nav"><strong id="navTitle">출발 후 직진하세요</strong><span id="navSub">첫 분기점에서 우회전 · 방향지시등 사용</span></div></div>
+<div class="controls"><div id="rightPad" class="pad"><button class="btn" id="gas" data-key="gas">ACCEL</button><button class="btn" id="brake" data-key="brake">BRAKE</button></div></div><div id="wheelWrap"><div id="wheel"><div id="wheelMark"></div><div id="wheelHub"></div></div></div>
 <div id="signalPad"><button class="sig" id="sigL">◀︎</button><button class="sig" id="sigR">▶︎</button></div>
 <div id="hint">목표: 직진 → 감속 → 우측 방향지시등 → 우회전</div><div id="toast"></div>
-<div id="start"><div id="card"><h1>강서 ROAD TEST</h1><p>A코스 구간 주행 프로토타입 v2<br>직진만 하던 v1에서 첫 분기·우회전·방향지시등을 추가했습니다.</p><button id="startBtn">A코스 주행 시작</button></div></div>
+<div id="start"><div id="card"><h1>강서 ROAD TEST</h1><p>A코스 구간 주행 프로토타입 v3<br>원형 스티어링 휠을 직접 돌려 조향합니다.</p><button id="startBtn">A코스 주행 시작</button></div></div>
 <script>
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),statusEl=document.getElementById('status'),scoreEl=document.getElementById('score'),navTitle=document.getElementById('navTitle'),navSub=document.getElementById('navSub'),toast=document.getElementById('toast'),startEl=document.getElementById('start');
-const keys={left:false,right:false,gas:false,brake:false}; let running=false,last=performance.now(),score=100,signal=0,checkpoint=0,penalties={signal:false,offroad:false,speed:false};
+const keys={left:false,right:false,gas:false,brake:false}; const wheel=document.getElementById('wheel'),wheelWrap=document.getElementById('wheelWrap'); let wheelAngle=0,wheelTarget=0,wheelDragging=false,wheelPointer=null; const maxWheel=145; let running=false,last=performance.now(),score=100,signal=0,checkpoint=0,penalties={signal:false,offroad:false,speed:false};
 function resize(){const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0)} addEventListener('resize',resize);resize();
 const car={x:0,y:360,angle:-Math.PI/2,speed:0,steer:0}; const roadW=300,half=150;
 function bindButton(btn,key){const on=e=>{e.preventDefault();keys[key]=true;btn.classList.add('active')};const off=e=>{e.preventDefault();keys[key]=false;btn.classList.remove('active')};['pointerdown','touchstart'].forEach(ev=>btn.addEventListener(ev,on,{passive:false}));['pointerup','pointercancel','pointerleave','touchend','touchcancel'].forEach(ev=>btn.addEventListener(ev,off,{passive:false}))} document.querySelectorAll('[data-key]').forEach(b=>bindButton(b,b.dataset.key));
+
+function wheelPoint(e){const r=wheelWrap.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;return Math.atan2(e.clientY-cy,e.clientX-cx)*180/Math.PI}
+let wheelStartPointer=0,wheelStartAngle=0;
+wheelWrap.addEventListener('pointerdown',e=>{e.preventDefault();wheelDragging=true;wheelPointer=e.pointerId;wheelWrap.setPointerCapture(e.pointerId);wheelStartPointer=wheelPoint(e);wheelStartAngle=wheelAngle});
+wheelWrap.addEventListener('pointermove',e=>{if(!wheelDragging||e.pointerId!==wheelPointer)return;e.preventDefault();let d=wheelPoint(e)-wheelStartPointer;while(d>180)d-=360;while(d<-180)d+=360;wheelTarget=Math.max(-maxWheel,Math.min(maxWheel,wheelStartAngle+d));wheelAngle=wheelTarget;wheel.style.transform=`rotate(${wheelAngle}deg)`});
+function releaseWheel(e){if(!wheelDragging||(e&&e.pointerId!==wheelPointer))return;wheelDragging=false;wheelPointer=null;wheelTarget=0}
+wheelWrap.addEventListener('pointerup',releaseWheel);wheelWrap.addEventListener('pointercancel',releaseWheel);
+
 function setSignal(v){signal=signal===v?0:v;document.getElementById('sigL').classList.toggle('active',signal===-1);document.getElementById('sigR').classList.toggle('active',signal===1)} document.getElementById('sigL').onclick=()=>setSignal(-1);document.getElementById('sigR').onclick=()=>setSignal(1);
 addEventListener('keydown',e=>{if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.key==='ArrowUp')keys.gas=true;if(e.key==='ArrowDown')keys.brake=true;if(e.key==='q')setSignal(-1);if(e.key==='e')setSignal(1)}); addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false;if(e.key==='ArrowUp')keys.gas=false;if(e.key==='ArrowDown')keys.brake=false});
 document.getElementById('startBtn').onclick=()=>{startEl.style.display='none';running=true;last=performance.now();requestAnimationFrame(loop)};
 function pop(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(pop.t);pop.t=setTimeout(()=>toast.classList.remove('show'),1100)} function deduct(n,msg){score=Math.max(0,score-n);scoreEl.textContent=score+'점';pop('-'+n+'점 · '+msg)}
 function distToRoad(x,y){ // union of vertical approach and horizontal road at intersection
  const dV=Math.abs(x); const onV=y>-100; const dH=Math.abs(y+100); const onH=x>-10; let d=999; if(onV)d=Math.min(d,dV); if(onH)d=Math.min(d,dH); return d; }
-function update(dt){const accel=55,brake=90,drag=15,max=90,reverse=-15;if(keys.gas)car.speed+=accel*dt;if(keys.brake)car.speed-=brake*dt;if(!keys.gas&&!keys.brake){if(car.speed>0)car.speed=Math.max(0,car.speed-drag*dt);else if(car.speed<0)car.speed=Math.min(0,car.speed+drag*dt)}car.speed=Math.max(reverse,Math.min(max,car.speed));const target=(keys.left?-1:0)+(keys.right?1:0);car.steer+=(target-car.steer)*Math.min(1,7*dt);const sf=Math.min(1,Math.abs(car.speed)/35);car.angle+=car.steer*(1.0*sf)*(car.speed>=0?1:-1)*dt;const pp=1.65;car.x+=Math.cos(car.angle)*car.speed*pp*dt;car.y+=Math.sin(car.angle)*car.speed*pp*dt;statusEl.textContent=Math.round(Math.abs(car.speed))+' km/h';
+function update(dt){const accel=55,brake=90,drag=15,max=90,reverse=-15;if(keys.gas)car.speed+=accel*dt;if(keys.brake)car.speed-=brake*dt;if(!keys.gas&&!keys.brake){if(car.speed>0)car.speed=Math.max(0,car.speed-drag*dt);else if(car.speed<0)car.speed=Math.min(0,car.speed+drag*dt)}car.speed=Math.max(reverse,Math.min(max,car.speed));if(!wheelDragging){wheelAngle+=(wheelTarget-wheelAngle)*Math.min(1,6*dt);if(Math.abs(wheelAngle)<.2)wheelAngle=0;wheel.style.transform=`rotate(${wheelAngle}deg)`}const keyboard=(keys.left?-1:0)+(keys.right?1:0);const target=keyboard||wheelAngle/maxWheel;car.steer+=(target-car.steer)*Math.min(1,7*dt);const sf=Math.min(1,Math.abs(car.speed)/35);car.angle+=car.steer*(1.0*sf)*(car.speed>=0?1:-1)*dt;const pp=1.65;car.x+=Math.cos(car.angle)*car.speed*pp*dt;car.y+=Math.sin(car.angle)*car.speed*pp*dt;statusEl.textContent=Math.round(Math.abs(car.speed))+' km/h';
  // checkpoint logic
  if(checkpoint===0 && car.y<120){checkpoint=1;navTitle.textContent='120m 앞 우회전';navSub.textContent='감속 후 우측 방향지시등을 켜세요';}
  if(checkpoint===1 && car.y<15){checkpoint=2;navTitle.textContent='곧 우회전';navSub.textContent='20 km/h 안팎으로 진입 권장';if(signal!==1&&!penalties.signal){penalties.signal=true;deduct(5,'방향지시등 미사용')}}
