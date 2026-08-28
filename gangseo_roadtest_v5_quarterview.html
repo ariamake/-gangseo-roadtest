@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>강서 ROAD TEST v5 · 쿼터뷰</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0f1317;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 2px 5px #000}
+#topbar{position:absolute;left:14px;right:14px;top:10px;display:flex;justify-content:space-between;font-weight:900;font-size:15px}
+#speed{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:#111b;padding:8px 14px;border-radius:999px;font-weight:800}
+#nav{position:absolute;top:82px;left:50%;transform:translateX(-50%);width:min(78vw,400px);background:#101820d9;border:1px solid #ffffff22;border-radius:16px;padding:11px 14px;box-sizing:border-box}
+#nav b{display:block;font-size:15px;margin-bottom:3px} #nav span{font-size:12px;color:#dce7ef}
+#rightPad{position:fixed;right:15px;bottom:22px;display:flex;flex-direction:column-reverse;gap:9px;z-index:5}
+.btn{width:88px;height:58px;border:1px solid #ffffff2b;border-radius:18px;background:#ffffff20;color:#fff;font-weight:900;font-size:17px;backdrop-filter:blur(8px)}
+.btn.active{background:#ffffff55;transform:scale(.98)}
+#wheelWrap{position:fixed;left:14px;bottom:18px;width:132px;height:132px;z-index:5;touch-action:none}
+#wheel{position:relative;width:100%;height:100%;border-radius:50%;border:10px solid #eef2f6e8;box-sizing:border-box;background:#17202955;box-shadow:inset 0 0 0 3px #0005,0 8px 24px #0006}
+#wheel:before,#wheel:after{content:"";position:absolute;left:50%;top:50%;width:50px;height:8px;background:#eef2f6e8;border-radius:8px;transform-origin:0 50%}
+#wheel:before{transform:rotate(25deg)}#wheel:after{transform:rotate(155deg)}
+#hub{position:absolute;left:50%;top:50%;width:36px;height:36px;transform:translate(-50%,-50%);border-radius:50%;background:#222c35;border:4px solid #eef2f6}
+#mark{position:absolute;left:50%;top:2px;width:6px;height:25px;transform:translateX(-50%);background:white;border-radius:4px}
+#signals{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);display:flex;gap:8px;z-index:5}
+.sig{width:52px;height:36px;border:0;border-radius:13px;background:#0007;color:#fff;font-size:18px}.sig.active{background:#f3b52c;color:#111}
+#toast{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);background:#000b;color:#fff;padding:14px 18px;border-radius:15px;font-size:18px;font-weight:900;opacity:0;transition:.2s;pointer-events:none;z-index:8}
+#toast.show{opacity:1}
+#start{position:fixed;inset:0;background:linear-gradient(#8fc7ef 0 44%,#66806b 44%);display:flex;align-items:center;justify-content:center;z-index:10}
+#card{width:min(88vw,420px);background:#101820ef;color:#fff;border-radius:24px;padding:24px;text-align:center;box-shadow:0 24px 70px #0006}
+#card h1{margin:0 0 7px;font-size:28px}#card p{color:#d8e5ed;line-height:1.5}
+#startBtn{width:100%;padding:15px;border:0;border-radius:15px;background:#fff;color:#17212a;font-size:18px;font-weight:900}
+#concept{position:absolute;left:50%;bottom:164px;transform:translateX(-50%);font-size:11px;color:#fff9;background:#0005;padding:6px 9px;border-radius:10px;white-space:nowrap}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="topbar"><span>A COURSE · V5 QUARTER VIEW</span><span id="score">100점</span></div>
+  <div id="speed">0 km/h</div>
+  <div id="nav"><b id="navTitle">출발 후 직진하세요</b><span id="navSub">첫 교차로에서 우회전 · 방향지시등 사용</span></div>
+  
+</div>
+<div id="wheelWrap"><div id="wheel"><div id="mark"></div><div id="hub"></div></div></div>
+<div id="signals"><button class="sig" id="sigL">◀︎</button><button class="sig" id="sigR">▶︎</button></div>
+<div id="rightPad"><button class="btn" id="gas">ACCEL</button><button class="btn" id="brake">BRAKE</button></div>
+<div id="toast"></div>
+<div id="start"><div id="card">
+  <h1>강서 ROAD TEST</h1>
+  <p>V5 쿼터뷰 주행 테스트<br>강서 A코스를 높은 후방 사선 시점으로 달리는 모바일 도로주행 게임입니다.</p>
+  <button id="startBtn">A코스 주행 시작</button>
+</div></div>
+
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+const speedEl=document.getElementById('speed'),scoreEl=document.getElementById('score');
+const navTitle=document.getElementById('navTitle'),navSub=document.getElementById('navSub');
+const toast=document.getElementById('toast'),start=document.getElementById('start');
+const sigL=document.getElementById('sigL'),sigR=document.getElementById('sigR'),startBtn=document.getElementById('startBtn');
+let DPR=1,W=0,H=0;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+
+let running=false,last=performance.now(),score=100,signal=0,checkpoint=0;
+const keys={gas:false,brake:false};
+const car={x:0,y:470,a:-Math.PI/2,speed:0,steer:0};
+let wheelAngle=0,wheelTarget=0,wheelDragging=false,wheelPointer=null;
+const maxWheel=145,wheel=document.getElementById('wheel'),wheelWrap=document.getElementById('wheelWrap');
+
+function pointAngle(e){const r=wheelWrap.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;return Math.atan2(e.clientY-cy,e.clientX-cx)*180/Math.PI}
+let startPointer=0,startAngle=0;
+wheelWrap.addEventListener('pointerdown',e=>{e.preventDefault();wheelDragging=true;wheelPointer=e.pointerId;wheelWrap.setPointerCapture(e.pointerId);startPointer=pointAngle(e);startAngle=wheelAngle});
+wheelWrap.addEventListener('pointermove',e=>{if(!wheelDragging||e.pointerId!==wheelPointer)return;e.preventDefault();let d=pointAngle(e)-startPointer;while(d>180)d-=360;while(d<-180)d+=360;wheelTarget=Math.max(-maxWheel,Math.min(maxWheel,startAngle+d));wheelAngle=wheelTarget;wheel.style.transform=`rotate(${wheelAngle}deg)`});
+function release(e){if(!wheelDragging||(e&&e.pointerId!==wheelPointer))return;wheelDragging=false;wheelPointer=null;wheelTarget=0}
+wheelWrap.addEventListener('pointerup',release);wheelWrap.addEventListener('pointercancel',release);
+
+function bind(btn,key){const on=e=>{e.preventDefault();keys[key]=true;btn.classList.add('active')},off=e=>{e.preventDefault();keys[key]=false;btn.classList.remove('active')};btn.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(v=>btn.addEventListener(v,off))}
+bind(document.getElementById('gas'),'gas');bind(document.getElementById('brake'),'brake');
+function setSignal(v){signal=signal===v?0:v;sigL.classList.toggle('active',signal===-1);sigR.classList.toggle('active',signal===1)}
+sigL.onclick=()=>setSignal(-1);sigR.onclick=()=>setSignal(1);
+startBtn.onclick=()=>{start.style.display='none';running=true;last=performance.now();requestAnimationFrame(loop)};
+
+function pop(s){toast.textContent=s;toast.classList.add('show');clearTimeout(pop.t);pop.t=setTimeout(()=>toast.classList.remove('show'),1100)}
+function deduct(n,s){score=Math.max(0,score-n);scoreEl.textContent=score+'점';pop(`-${n}점 · ${s}`)}
+
+const roadHalf=150;
+function roadDistance(x,y){let d=999;if(y>-150)d=Math.min(d,Math.abs(x));if(x>-20)d=Math.min(d,Math.abs(y+120));return d}
+
+function update(dt){
+  if(keys.gas)car.speed+=52*dt;
+  if(keys.brake)car.speed-=88*dt;
+  if(!keys.gas&&!keys.brake)car.speed=Math.max(0,car.speed-13*dt);
+  car.speed=Math.max(-10,Math.min(82,car.speed));
+  if(!wheelDragging){wheelAngle+=(wheelTarget-wheelAngle)*Math.min(1,6*dt);if(Math.abs(wheelAngle)<.15)wheelAngle=0;wheel.style.transform=`rotate(${wheelAngle}deg)`}
+  const steerTarget=wheelAngle/maxWheel;
+  car.steer+=(steerTarget-car.steer)*Math.min(1,7*dt);
+  const sf=Math.min(1,Math.abs(car.speed)/30);
+  car.a+=car.steer*.95*sf*(car.speed>=0?1:-1)*dt;
+  car.x+=Math.cos(car.a)*car.speed*1.65*dt;
+  car.y+=Math.sin(car.a)*car.speed*1.65*dt;
+  speedEl.textContent=Math.round(Math.abs(car.speed))+' km/h';
+
+  if(checkpoint===0&&car.y<170){checkpoint=1;navTitle.textContent='100m 앞 우회전';navSub.textContent='감속하고 우측 방향지시등을 켜세요'}
+  if(checkpoint===1&&car.y<30){checkpoint=2;navTitle.textContent='곧 우회전';navSub.textContent='교차로 진입 속도 20 km/h 안팎 권장';if(signal!==1){deduct(5,'방향지시등 미사용')}}
+  if(checkpoint===2&&car.x>100&&Math.abs(car.y+120)<110){checkpoint=3;navTitle.textContent='우회전 완료 · 직진';navSub.textContent='차선 중앙을 유지하세요';signal=0;sigR.classList.remove('active');pop('첫 교차로 통과!')}
+  const rd=roadDistance(car.x,car.y);
+  if(rd>roadHalf-18&&!update.off){update.off=true;deduct(10,'차로 이탈')}
+  if(rd<roadHalf-35)update.off=false;
+}
+
+function local(wx,wy){
+  const dx=wx-car.x,dy=wy-car.y;
+  const f={x:Math.cos(car.a),y:Math.sin(car.a)},r={x:-Math.sin(car.a),y:Math.cos(car.a)};
+  return{x:dx*r.x+dy*r.y,z:dx*f.x+dy*f.y}
+}
+function proj(wx,wy,h=0){
+  const p=local(wx,wy),focal=Math.min(W,H)*1.34,zz=Math.max(36,p.z+255);
+  const s=focal/zz;
+  return{x:W/2+p.x*s,y:H*.53-(p.z*.31+h)*s,s,depth:p.z}
+}
+function polyWorld(points,fill,stroke=null,lw=1){
+  const ps=points.map(p=>proj(p[0],p[1],p[2]||0));
+  ctx.beginPath();ps.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke()}
+}
+function lineWorld(a,b,color,w=3){
+  const p=proj(a[0],a[1],a[2]||0),q=proj(b[0],b[1],b[2]||0);
+  ctx.strokeStyle=color;ctx.lineWidth=Math.max(1,w*(p.s+q.s)/2);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke()
+}
+function box(x,y,w,d,h,wall='#8d765c',roof='#b89a73'){
+  const A=[x-w/2,y-d/2],B=[x+w/2,y-d/2],C=[x+w/2,y+d/2],D=[x-w/2,y+d/2];
+  polyWorld([[...D,0],[...C,0],[...C,h],[...D,h]],'#675548');
+  polyWorld([[...B,0],[...C,0],[...C,h],[...B,h]],wall);
+  polyWorld([[...A,h],[...B,h],[...C,h],[...D,h]],roof);
+}
+function tree(x,y){
+  const p=proj(x,y,0),q=proj(x,y,45);
+  ctx.strokeStyle='#604a32';ctx.lineWidth=Math.max(2,5*p.s);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+  ctx.fillStyle='#2c7643';ctx.beginPath();ctx.arc(q.x,q.y,Math.max(4,15*q.s),0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#45945a';ctx.beginPath();ctx.arc(q.x-5*q.s,q.y-4*q.s,Math.max(3,9*q.s),0,Math.PI*2);ctx.fill();
+}
+function drawRoad(){
+  polyWorld([[-roadHalf,-900],[roadHalf,-900],[roadHalf,900],[-roadHalf,900]],'#343a3f');
+  polyWorld([[-40,-270],[950,-270],[950,30],[-40,30]],'#343a3f');
+
+  polyWorld([[-roadHalf-28,-900],[-roadHalf,-900],[-roadHalf,900],[-roadHalf-28,900]],'#aa9a83');
+  polyWorld([[roadHalf,-900],[roadHalf+28,-900],[roadHalf+28,70],[roadHalf,70]],'#aa9a83');
+  polyWorld([[-40,-298],[950,-298],[950,-270],[-40,-270]],'#aa9a83');
+  polyWorld([[150,30],[950,30],[950,58],[150,58]],'#aa9a83');
+
+  for(const x of [-50,50])for(let y=-850;y<850;y+=72){if(y>-285&&y<75)continue;lineWorld([x,y],[x,y+34],'#f3f3f3',3)}
+  for(const yy of [-170,-70])for(let x=55;x<900;x+=72)lineWorld([x,yy],[x+34,yy],'#f3f3f3',3);
+
+  lineWorld([-135,28],[135,28],'#fff',6);
+  lineWorld([-143,-900],[-143,900],'#f3d251',4);
+  lineWorld([143,-900],[143,70],'#f3d251',4);
+  lineWorld([-35,-263],[950,-263],'#f3d251',4);
+  lineWorld([150,23],[950,23],'#f3d251',4);
+}
+
+function roadsideMarker(x,y){
+  const p=proj(x,y,0), q=proj(x,y,18);
+  ctx.strokeStyle='#ded7c9';
+  ctx.lineWidth=Math.max(1.5,3*p.s);
+  ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+  ctx.fillStyle='#555';
+  ctx.fillRect(q.x-2*q.s,q.y-4*q.s,4*q.s,7*q.s);
+}
+
+function drawWorld(){
+  drawRoad();
+  box(-290,120,150,220,68,'#876f5d','#b89b79');
+  box(340,-355,180,130,54,'#765f50','#9e8167');
+  box(475,-40,125,170,44,'#8b725b','#b79570');
+  box(-310,-390,115,150,48,'#796354','#a98a6e');
+  for(let y=390;y>-760;y-=145){tree(-225,y);if(y<0||y>180)tree(225,y)}for(let y=360;y>-760;y-=95){roadsideMarker(-178,y); if(y<40||y>180)roadsideMarker(178,y)}
+  for(let x=270;x<870;x+=150){tree(x,-340);tree(x,88)}
+
+  for(const [x,y] of [[-178,12],[178,-255]]){
+    const p=proj(x,y,0),q=proj(x,y,58);
+    ctx.strokeStyle='#343434';ctx.lineWidth=Math.max(2,4*p.s);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+    ctx.fillStyle='#222';ctx.fillRect(q.x-7*q.s,q.y-15*q.s,14*q.s,28*q.s);
+    ctx.fillStyle='#5fd15d';ctx.beginPath();ctx.arc(q.x,q.y-7*q.s,3.3*q.s,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawCar(){
+  const cx=W/2,cy=H*.69;
+  ctx.save();ctx.translate(cx,cy);ctx.scale(.88,.88);ctx.rotate(car.steer*.12);
+  ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(6,17,28,45,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#bcc7ce';ctx.beginPath();ctx.moveTo(-22,-30);ctx.lineTo(22,-30);ctx.lineTo(27,31);ctx.lineTo(-18,38);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#edf2f5';ctx.beginPath();ctx.moveTo(-22,-37);ctx.lineTo(18,-37);ctx.lineTo(22,25);ctx.lineTo(-22,31);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#a5c7db';ctx.beginPath();ctx.moveTo(-14,-26);ctx.lineTo(12,-26);ctx.lineTo(15,-5);ctx.lineTo(-15,-4);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#1f2a31';ctx.fillRect(-15,7,30,15);
+  ctx.fillStyle='#111';ctx.fillRect(-27,-20,7,18);ctx.fillRect(20,-20,7,18);ctx.fillRect(-27,12,7,17);ctx.fillRect(20,12,7,17);
+  ctx.fillStyle=signal===1?'#ffbd28':'#777';ctx.fillRect(15,-34,6,7);ctx.fillStyle=signal===-1?'#ffbd28':'#777';ctx.fillRect(-22,-34,6,7);
+  ctx.restore();
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const sky=ctx.createLinearGradient(0,0,0,H*.31);sky.addColorStop(0,'#8dc5ed');sky.addColorStop(1,'#cbe5f5');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H*.31);
+  ctx.fillStyle='#68826b';ctx.fillRect(0,H*.27,W,H*.56);
+  drawWorld();drawCar();
+  const vg=ctx.createRadialGradient(W/2,H*.56,Math.min(W,H)*.28,W/2,H*.56,Math.max(W,H)*.78);vg.addColorStop(.55,'#0000');vg.addColorStop(1,'#0003');ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+}
+function loop(t){if(!running)return;const dt=Math.min(.033,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}
+draw();
+</script>
+</body>
+</html>
