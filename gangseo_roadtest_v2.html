@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>강서 ROAD TEST v2</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+#wrap{position:fixed;inset:0;background:#111} canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85)}
+#topbar{position:absolute;left:14px;right:14px;top:10px;display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px}
+#status{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.4);backdrop-filter:blur(6px);padding:8px 12px;border-radius:999px;font-size:13px}
+#nav{position:absolute;top:86px;left:50%;transform:translateX(-50%);width:min(82vw,430px);background:rgba(9,17,26,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:11px 14px;box-sizing:border-box}
+#nav strong{display:block;font-size:15px;margin-bottom:3px} #nav span{font-size:12px;color:#d7e4ef}
+.controls{position:fixed;inset:0;pointer-events:none}.pad{position:absolute;bottom:18px;display:flex;gap:10px;pointer-events:auto}#leftPad{left:16px}#rightPad{right:16px;flex-direction:column-reverse}
+.btn{width:78px;height:78px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:white;font-size:30px;font-weight:800;backdrop-filter:blur(8px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);user-select:none;-webkit-user-select:none}.btn:active,.btn.active{background:rgba(255,255,255,.34);transform:scale(.98)}
+#gas,#brake{width:94px;height:62px;font-size:17px;border-radius:18px}#gas{background:rgba(255,255,255,.20)}#brake{background:rgba(255,255,255,.13)}
+#signalPad{position:fixed;left:50%;bottom:98px;transform:translateX(-50%);display:flex;gap:8px;pointer-events:auto}.sig{width:64px;height:42px;border:0;border-radius:14px;background:rgba(0,0,0,.34);color:#fff;font-size:18px;font-weight:900}.sig.active{background:rgba(255,185,45,.78);color:#111}
+#hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.3);color:#ddd;font-size:12px;pointer-events:none;white-space:nowrap}
+#toast{position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);background:rgba(0,0,0,.68);color:#fff;padding:14px 20px;border-radius:16px;font-weight:800;font-size:18px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:4}#toast.show{opacity:1}
+#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#8ec9ff 0 58%,#495159 58%);z-index:5}#card{width:min(88vw,420px);background:rgba(10,18,28,.9);color:#fff;padding:24px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}#card h1{margin:0 0 8px;font-size:30px}#card p{margin:6px 0 18px;color:#d8e4ef;line-height:1.55}#startBtn{border:0;border-radius:16px;padding:15px 24px;font-size:18px;font-weight:800;background:#fff;color:#17212b;width:100%}
+@media (orientation:portrait){#hint::after{content:' · 가로모드 권장'}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<div id="hud"><div id="topbar"><span>A COURSE · v2</span><span id="score">100점</span></div><div id="status">0 km/h</div><div id="nav"><strong id="navTitle">출발 후 직진하세요</strong><span id="navSub">첫 분기점에서 우회전 · 방향지시등 사용</span></div></div>
+<div class="controls"><div id="leftPad" class="pad"><button class="btn" data-key="left">◀</button><button class="btn" data-key="right">▶</button></div><div id="rightPad" class="pad"><button class="btn" id="gas" data-key="gas">ACCEL</button><button class="btn" id="brake" data-key="brake">BRAKE</button></div></div>
+<div id="signalPad"><button class="sig" id="sigL">◀︎</button><button class="sig" id="sigR">▶︎</button></div>
+<div id="hint">목표: 직진 → 감속 → 우측 방향지시등 → 우회전</div><div id="toast"></div>
+<div id="start"><div id="card"><h1>강서 ROAD TEST</h1><p>A코스 구간 주행 프로토타입 v2<br>직진만 하던 v1에서 첫 분기·우회전·방향지시등을 추가했습니다.</p><button id="startBtn">A코스 주행 시작</button></div></div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),statusEl=document.getElementById('status'),scoreEl=document.getElementById('score'),navTitle=document.getElementById('navTitle'),navSub=document.getElementById('navSub'),toast=document.getElementById('toast'),startEl=document.getElementById('start');
+const keys={left:false,right:false,gas:false,brake:false}; let running=false,last=performance.now(),score=100,signal=0,checkpoint=0,penalties={signal:false,offroad:false,speed:false};
+function resize(){const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0)} addEventListener('resize',resize);resize();
+const car={x:0,y:360,angle:-Math.PI/2,speed:0,steer:0}; const roadW=300,half=150;
+function bindButton(btn,key){const on=e=>{e.preventDefault();keys[key]=true;btn.classList.add('active')};const off=e=>{e.preventDefault();keys[key]=false;btn.classList.remove('active')};['pointerdown','touchstart'].forEach(ev=>btn.addEventListener(ev,on,{passive:false}));['pointerup','pointercancel','pointerleave','touchend','touchcancel'].forEach(ev=>btn.addEventListener(ev,off,{passive:false}))} document.querySelectorAll('[data-key]').forEach(b=>bindButton(b,b.dataset.key));
+function setSignal(v){signal=signal===v?0:v;document.getElementById('sigL').classList.toggle('active',signal===-1);document.getElementById('sigR').classList.toggle('active',signal===1)} document.getElementById('sigL').onclick=()=>setSignal(-1);document.getElementById('sigR').onclick=()=>setSignal(1);
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.key==='ArrowUp')keys.gas=true;if(e.key==='ArrowDown')keys.brake=true;if(e.key==='q')setSignal(-1);if(e.key==='e')setSignal(1)}); addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false;if(e.key==='ArrowUp')keys.gas=false;if(e.key==='ArrowDown')keys.brake=false});
+document.getElementById('startBtn').onclick=()=>{startEl.style.display='none';running=true;last=performance.now();requestAnimationFrame(loop)};
+function pop(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(pop.t);pop.t=setTimeout(()=>toast.classList.remove('show'),1100)} function deduct(n,msg){score=Math.max(0,score-n);scoreEl.textContent=score+'점';pop('-'+n+'점 · '+msg)}
+function distToRoad(x,y){ // union of vertical approach and horizontal road at intersection
+ const dV=Math.abs(x); const onV=y>-100; const dH=Math.abs(y+100); const onH=x>-10; let d=999; if(onV)d=Math.min(d,dV); if(onH)d=Math.min(d,dH); return d; }
+function update(dt){const accel=55,brake=90,drag=15,max=90,reverse=-15;if(keys.gas)car.speed+=accel*dt;if(keys.brake)car.speed-=brake*dt;if(!keys.gas&&!keys.brake){if(car.speed>0)car.speed=Math.max(0,car.speed-drag*dt);else if(car.speed<0)car.speed=Math.min(0,car.speed+drag*dt)}car.speed=Math.max(reverse,Math.min(max,car.speed));const target=(keys.left?-1:0)+(keys.right?1:0);car.steer+=(target-car.steer)*Math.min(1,7*dt);const sf=Math.min(1,Math.abs(car.speed)/35);car.angle+=car.steer*(1.0*sf)*(car.speed>=0?1:-1)*dt;const pp=1.65;car.x+=Math.cos(car.angle)*car.speed*pp*dt;car.y+=Math.sin(car.angle)*car.speed*pp*dt;statusEl.textContent=Math.round(Math.abs(car.speed))+' km/h';
+ // checkpoint logic
+ if(checkpoint===0 && car.y<120){checkpoint=1;navTitle.textContent='120m 앞 우회전';navSub.textContent='감속 후 우측 방향지시등을 켜세요';}
+ if(checkpoint===1 && car.y<15){checkpoint=2;navTitle.textContent='곧 우회전';navSub.textContent='20 km/h 안팎으로 진입 권장';if(signal!==1&&!penalties.signal){penalties.signal=true;deduct(5,'방향지시등 미사용')}}
+ if(checkpoint===2 && car.x>90 && Math.abs(car.y+100)<100){checkpoint=3;navTitle.textContent='우회전 완료 · 직진';navSub.textContent='차선 중앙을 유지하세요';pop('첫 분기 통과!');signal=0;document.getElementById('sigR').classList.remove('active')}
+ if(checkpoint<3 && car.y<35 && Math.abs(car.speed)>35 && !penalties.speed){penalties.speed=true;deduct(5,'교차로 진입 속도 과다')}
+ const d=distToRoad(car.x,car.y); if(d>half-18){car.speed*=.985;if(!penalties.offroad){penalties.offroad=true;deduct(10,'차로 이탈')}}
+}
+function worldToScreen(wx,wy,cx,cy,scale){const dx=wx-car.x,dy=wy-car.y;const ca=Math.cos(-car.angle-Math.PI/2),sa=Math.sin(-car.angle-Math.PI/2);const rx=dx*ca-dy*sa,ry=dx*sa+dy*ca;return{x:cx+rx*scale,y:cy+ry*scale}}
+function poly(points,fill){ctx.fillStyle=fill;ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill()}
+function line(a,b,color,w=4){ctx.strokeStyle=color;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}
+function drawRoadRect(x1,y1,x2,y2,cx,cy,s,fill='#30363b'){poly([worldToScreen(x1,y1,cx,cy,s),worldToScreen(x2,y1,cx,cy,s),worldToScreen(x2,y2,cx,cy,s),worldToScreen(x1,y2,cx,cy,s)],fill)}
+function draw(){const w=innerWidth,h=innerHeight;ctx.clearRect(0,0,w,h);const grad=ctx.createLinearGradient(0,0,0,h);grad.addColorStop(0,'#9fd5ff');grad.addColorStop(.44,'#d8efff');grad.addColorStop(.441,'#60706b');grad.addColorStop(1,'#3d4942');ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);const cx=w/2,cy=h*.72,s=1.2;
+ // roads: vertical approach + horizontal road, overlapping to form T/intersection
+ drawRoadRect(-half,-900,half,900,cx,cy,s); drawRoadRect(-40,-100-half,900,-100+half,cx,cy,s);
+ // sidewalks/grass bands for readable intersection
+ drawRoadRect(-half-24,-900,-half,900,cx,cy,s,'#6f7e72');drawRoadRect(half,-900,half+24,900,cx,cy,s,'#6f7e72');drawRoadRect(-40,-100-half-24,900,-100-half,cx,cy,s,'#6f7e72');drawRoadRect(-40,-100+half,900,-100+half+24,cx,cy,s,'#6f7e72');
+ // lane dashes vertical
+ ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=4;[-50,50].forEach(x=>{ctx.beginPath();for(let y=-900;y<900;y+=60){if(y>-260&&y<70)continue;const a=worldToScreen(x,y,cx,cy,s),b=worldToScreen(x,y+28,cx,cy,s);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y)}ctx.stroke()});
+ // lane dashes horizontal
+ [-150,-50].forEach(y=>{ctx.beginPath();for(let x=40;x<900;x+=60){const a=worldToScreen(x,y,cx,cy,s),b=worldToScreen(x+28,y,cx,cy,s);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y)}ctx.stroke()});
+ // stop line before turn
+ line(worldToScreen(-half+18,25,cx,cy,s),worldToScreen(half-18,25,cx,cy,s),'rgba(255,255,255,.95)',7);
+ // outer yellow edges
+ line(worldToScreen(-half+8,-900,cx,cy,s),worldToScreen(-half+8,900,cx,cy,s),'#f1cf4e',5);line(worldToScreen(half-8,-900,cx,cy,s),worldToScreen(half-8,70,cx,cy,s),'#f1cf4e',5);line(worldToScreen(-40,-100-half+8,cx,cy,s),worldToScreen(900,-100-half+8,cx,cy,s),'#f1cf4e',5);line(worldToScreen(150,-100+half-8,cx,cy,s),worldToScreen(900,-100+half-8,cx,cy,s),'#f1cf4e',5);
+ // direction arrow on road
+ const ap=worldToScreen(0,120,cx,cy,s);ctx.save();ctx.translate(ap.x,ap.y);ctx.rotate(-car.angle-Math.PI/2);ctx.fillStyle='rgba(255,255,255,.7)';ctx.font='bold 28px system-ui';ctx.textAlign='center';ctx.fillText('↱',0,0);ctx.restore();
+ // trees/roadside posts
+ for(let y=-850;y<850;y+=140){[-220,220].forEach(x=>{if(y>-240&&y<80&&x>0)return;const p=worldToScreen(x,y,cx,cy,s);ctx.fillStyle='#2b7a45';ctx.beginPath();ctx.arc(p.x,p.y,9,0,Math.PI*2);ctx.fill()})}
+ // car fixed to camera, rotated by steering visual only
+ ctx.save();ctx.translate(cx,cy);ctx.fillStyle='rgba(0,0,0,.28)';ctx.beginPath();ctx.ellipse(0,10,24,42,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e9edf1';ctx.fillRect(-19,-36,38,72);ctx.fillStyle='#a9c8dd';ctx.fillRect(-14,-22,28,24);ctx.fillStyle='#1f2a32';ctx.fillRect(-15,10,30,16);ctx.fillStyle='#111';ctx.fillRect(-24,-24,6,18);ctx.fillRect(18,-24,6,18);ctx.fillRect(-24,10,6,18);ctx.fillRect(18,10,6,18);ctx.fillStyle=signal===1?'#ffbf2f':'#555';ctx.fillRect(15,-34,5,7);ctx.fillStyle=signal===-1?'#ffbf2f':'#555';ctx.fillRect(-20,-34,5,7);ctx.restore();
+ ctx.fillStyle='rgba(255,255,255,.7)';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText(car.steer<-.15?'조향 ←':car.steer>.15?'조향 →':'직진',cx,cy+62)}
+function loop(t){if(!running)return;const dt=Math.min(.033,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)} draw();
+</script></body></html>
