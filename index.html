@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>강서 ROAD TEST v1</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+  #wrap{position:fixed;inset:0;background:#111}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  #topbar{position:absolute;left:14px;right:14px;top:10px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px}
+  #status{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.35);backdrop-filter:blur(6px);padding:8px 12px;border-radius:999px;font-size:13px}
+  .controls{position:fixed;inset:0;pointer-events:none}
+  .pad{position:absolute;bottom:18px;display:flex;gap:10px;pointer-events:auto}
+  #leftPad{left:16px}
+  #rightPad{right:16px;flex-direction:column-reverse}
+  .btn{width:78px;height:78px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:white;font-size:30px;font-weight:800;backdrop-filter:blur(8px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);user-select:none;-webkit-user-select:none}
+  .btn:active,.btn.active{background:rgba(255,255,255,.34);transform:scale(.98)}
+  #gas,#brake{width:94px;height:62px;font-size:17px;border-radius:18px}
+  #gas{background:rgba(255,255,255,.20)}
+  #brake{background:rgba(255,255,255,.13)}
+  #hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.28);color:#ddd;font-size:12px;pointer-events:none}
+  #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#8ec9ff 0 58%,#495159 58%);z-index:5}
+  #card{width:min(88vw,420px);background:rgba(10,18,28,.88);color:#fff;padding:24px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}
+  #card h1{margin:0 0 8px;font-size:30px}
+  #card p{margin:6px 0 18px;color:#d8e4ef;line-height:1.55}
+  #startBtn{border:0;border-radius:16px;padding:15px 24px;font-size:18px;font-weight:800;background:#fff;color:#17212b;width:100%}
+  @media (orientation:portrait){#hint::after{content:' · 가로모드 권장'}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<div id="hud">
+  <div id="topbar"><span>A COURSE · v1</span><span id="score">100점</span></div>
+  <div id="status">0 km/h</div>
+</div>
+<div class="controls">
+  <div id="leftPad" class="pad">
+    <button class="btn" data-key="left">◀</button>
+    <button class="btn" data-key="right">▶</button>
+  </div>
+  <div id="rightPad" class="pad">
+    <button class="btn" id="gas" data-key="gas">ACCEL</button>
+    <button class="btn" id="brake" data-key="brake">BRAKE</button>
+  </div>
+</div>
+<div id="hint">첫 목표: 도로 위 주행감 확인</div>
+<div id="start">
+  <div id="card">
+    <h1>강서 ROAD TEST</h1>
+    <p>A코스 프로토타입 v1<br>차량 조작감과 3인칭 카메라를 먼저 확인합니다.</p>
+    <button id="startBtn">A코스 주행 시작</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const startEl = document.getElementById('start');
+const keys={left:false,right:false,gas:false,brake:false};
+let running=false, last=performance.now();
+
+function resize(){
+  const dpr=Math.min(devicePixelRatio||1,2);
+  canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr);
+  canvas.style.width=innerWidth+'px'; canvas.style.height=innerHeight+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize',resize); resize();
+
+const car={x:0,y:0,angle:-Math.PI/2,speed:0,steer:0};
+const road={half:150};
+
+function bindButton(btn,key){
+  const on=e=>{e.preventDefault();keys[key]=true;btn.classList.add('active')};
+  const off=e=>{e.preventDefault();keys[key]=false;btn.classList.remove('active')};
+  ['pointerdown','touchstart'].forEach(ev=>btn.addEventListener(ev,on,{passive:false}));
+  ['pointerup','pointercancel','pointerleave','touchend','touchcancel'].forEach(ev=>btn.addEventListener(ev,off,{passive:false}));
+}
+document.querySelectorAll('[data-key]').forEach(b=>bindButton(b,b.dataset.key));
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.key==='ArrowUp')keys.gas=true;if(e.key==='ArrowDown')keys.brake=true;});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false;if(e.key==='ArrowUp')keys.gas=false;if(e.key==='ArrowDown')keys.brake=false;});
+document.getElementById('startBtn').onclick=()=>{startEl.style.display='none';running=true;last=performance.now();requestAnimationFrame(loop)};
+
+function update(dt){
+  const accel=55, brake=85, drag=15, max=95, reverse=-18;
+  if(keys.gas) car.speed += accel*dt;
+  if(keys.brake) car.speed -= brake*dt;
+  if(!keys.gas && !keys.brake){
+    if(car.speed>0) car.speed=Math.max(0,car.speed-drag*dt);
+    else if(car.speed<0) car.speed=Math.min(0,car.speed+drag*dt);
+  }
+  car.speed=Math.max(reverse,Math.min(max,car.speed));
+  const targetSteer=(keys.left?-1:0)+(keys.right?1:0);
+  car.steer += (targetSteer-car.steer)*Math.min(1,7*dt);
+  const speedFactor=Math.min(1,Math.abs(car.speed)/35);
+  car.angle += car.steer*(0.95*speedFactor)*(car.speed>=0?1:-1)*dt;
+  const pxPerKmh=1.65;
+  car.x += Math.cos(car.angle)*car.speed*pxPerKmh*dt;
+  car.y += Math.sin(car.angle)*car.speed*pxPerKmh*dt;
+  // keep prototype centered around a broad road corridor, with soft slowdown at edges
+  if(Math.abs(car.x)>road.half-28){car.speed*=0.96;}
+  statusEl.textContent=Math.round(Math.abs(car.speed))+' km/h';
+}
+
+function worldToScreen(wx,wy,cx,cy,scale){
+  const dx=wx-car.x, dy=wy-car.y;
+  const ca=Math.cos(-car.angle-Math.PI/2), sa=Math.sin(-car.angle-Math.PI/2);
+  const rx=dx*ca-dy*sa, ry=dx*sa+dy*ca;
+  return {x:cx+rx*scale,y:cy+ry*scale};
+}
+
+function draw(){
+  const w=innerWidth,h=innerHeight;
+  ctx.clearRect(0,0,w,h);
+  // sky/ground
+  const grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'#9fd5ff');grad.addColorStop(.46,'#d8efff');grad.addColorStop(.461,'#5d6b70');grad.addColorStop(1,'#394247');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+
+  // camera: car near lower center
+  const cx=w/2, cy=h*0.72, scale=1.2;
+
+  // road long strip aligned with world Y axis
+  const minY=car.y-900, maxY=car.y+900;
+  const p1=worldToScreen(-road.half,minY,cx,cy,scale), p2=worldToScreen(road.half,minY,cx,cy,scale), p3=worldToScreen(road.half,maxY,cx,cy,scale), p4=worldToScreen(-road.half,maxY,cx,cy,scale);
+  ctx.fillStyle='#30363b'; ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.lineTo(p3.x,p3.y);ctx.lineTo(p4.x,p4.y);ctx.closePath();ctx.fill();
+
+  // shoulders
+  [-(road.half+18),road.half].forEach((x,i)=>{
+    const a=worldToScreen(x,minY,cx,cy,scale), b=worldToScreen(x+(i?18:-18),minY,cx,cy,scale), c=worldToScreen(x+(i?18:-18),maxY,cx,cy,scale), d=worldToScreen(x,maxY,cx,cy,scale);
+    ctx.fillStyle='#68756b';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.closePath();ctx.fill();
+  });
+
+  // lane markings
+  ctx.lineWidth=4;ctx.strokeStyle='rgba(255,255,255,.9)';
+  [-50,50].forEach(x=>{ctx.beginPath();for(let y=Math.floor(minY/60)*60;y<maxY;y+=60){const a=worldToScreen(x,y,cx,cy,scale),b=worldToScreen(x,y+28,cx,cy,scale);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}ctx.stroke();});
+  // outer yellow line
+  ctx.strokeStyle='#f1cf4e';ctx.lineWidth=5;[-road.half+8,road.half-8].forEach(x=>{const a=worldToScreen(x,minY,cx,cy,scale),b=worldToScreen(x,maxY,cx,cy,scale);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+
+  // simple roadside objects for speed perception
+  for(let y=Math.floor((car.y-800)/120)*120;y<car.y+800;y+=120){
+    [-220,220].forEach(x=>{
+      const p=worldToScreen(x,y,cx,cy,scale);
+      const s=Math.max(2,8+(p.y/h)*8);
+      ctx.fillStyle='#2b7a45';ctx.beginPath();ctx.arc(p.x,p.y,s,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#5b4a3a';ctx.fillRect(p.x-2,p.y,s*.25,10);
+    });
+  }
+
+  // car shadow
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(0);ctx.fillStyle='rgba(0,0,0,.28)';ctx.beginPath();ctx.ellipse(0,10,24,42,0,0,Math.PI*2);ctx.fill();
+  // car body
+  ctx.fillStyle='#e9edf1';ctx.fillRect(-19,-36,38,72);
+  ctx.fillStyle='#a9c8dd';ctx.fillRect(-14,-22,28,24);
+  ctx.fillStyle='#1f2a32';ctx.fillRect(-15,10,30,16);
+  ctx.fillStyle='#111';ctx.fillRect(-24,-24,6,18);ctx.fillRect(18,-24,6,18);ctx.fillRect(-24,10,6,18);ctx.fillRect(18,10,6,18);
+  ctx.restore();
+
+  // subtle steering marker
+  ctx.fillStyle='rgba(255,255,255,.65)';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText(car.steer<-0.15?'조향 ←':car.steer>0.15?'조향 →':'직진',cx,cy+62);
+}
+
+function loop(t){
+  if(!running)return;
+  const dt=Math.min(.033,(t-last)/1000);last=t;
+  update(dt);draw();requestAnimationFrame(loop);
+}
+draw();
+</script>
+</body>
+</html>
